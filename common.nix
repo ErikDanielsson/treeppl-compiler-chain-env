@@ -5,12 +5,13 @@ args@
     if builtins.pathExists ./local.nix
     then (import ./local.nix).compilerChain
     else throw "Create ${toString ./local.nix} with { compilerChain = \"/path/to/compilers\"; }"
-, miking          ? "${compilerChain}/miking"
-, ocamlMikingPath ? "${miking}/build/lib"
-, mi_stats        ? "${compilerChain}/mi-stats"
-, mikingdppl      ? "${compilerChain}/miking-dppl"
-, treeppl         ? "${compilerChain}/treeppl"
-, dev             ? "miking"
+, miking           ? "${compilerChain}/miking"
+, ocamlMikingPath  ? "${miking}/build/lib"
+, mi_stats         ? "${compilerChain}/mi-stats"
+, ocamlMiStatsPath ? "${mi_stats}/build/lib"
+, mikingdppl       ? "${compilerChain}/miking-dppl"
+, treeppl          ? "${compilerChain}/treeppl"
+, dev              ? "miking"
 , ...
 }:
 let mcoreLibsPaths = [
@@ -28,17 +29,25 @@ let mcoreLibsPaths = [
       src = miking;
       build = args.mikingBuild or "${miking}/build";
       bins = [ "mi" ];
-      ocamlPath = ocamlMikingPath;
+      ocamlPath = [ ocamlMikingPath ocamlMiStatsPath ];
+    };
+    mi_stats = {
+      src = mi_stats;
+      build = args.mikingBuild or "${mi_stats}/build";
+      bins = [ "mi" ];
+      ocamlPath = [ ocamlMiStatsPath ];
     };
     mikingdppl = {
       src = mikingdppl;
       build = args.mikingdpplBuild or "${mikingdppl}/build";
       bins = [ "cppl" ];
+      ocamlPath = [ ocamlMiStatsPath ];
     };
     treeppl    = {
       src = treeppl;
       build = args.treepplBuild or "${treeppl}/build";
       bins = [ "tpplc" ];
+      ocamlPath = [ ocamlMiStatsPath ];
     };
   };
 
@@ -55,7 +64,7 @@ let mcoreLibsPaths = [
     let
       shell = devShellOf c;
       ocamlPath = lib.concatStringsSep ":"
-        (lib.optional (c ? ocamlPath) c.ocamlPath ++ [ (envVarOf shell "OCAMLPATH") ]);
+        (c.ocamlPath ++ [ (envVarOf shell "OCAMLPATH") ]);
       toolPath = envVarOf shell "PATH";
     in
     map (b: pkgs.writeShellScriptBin b ''
@@ -74,6 +83,8 @@ let mcoreLibsPaths = [
     then pkgs.mkShell { packages = wrappers; }
     else (devShellOf components.${dev}).overrideAttrs (old: {
       shellHook = (old.shellHook or "") + ''
+        export MCORE_LIBS="${mcoreLibs}"
+        export OCAMLPATH="${ocamlMikingPath}:${ocamlMiStatsPath}:$OCAMLPATH"
         export PATH="${lib.makeBinPath wrappers}:$PATH"
       '';
     });
